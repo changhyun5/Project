@@ -1,0 +1,125 @@
+import argparse
+import cv2
+import numpy as np
+import os
+
+# 한글 경로 및 다양한 환경에서 이미지를 읽기 위한 함수
+def imread_korean(path, flags=cv2.IMREAD_COLOR):
+    try:
+        with open(path, "rb") as f:
+            bytes_data = bytearray(f.read())
+            numpy_array = np.asarray(bytes_data, dtype=np.uint8)
+        return cv2.imdecode(numpy_array, flags)
+    except Exception as e:
+        print(f"Error reading file: {e}")
+        return None
+
+# 1. 인자 설정 (중복 제거 및 경로 기본값 통일)
+parser = argparse.ArgumentParser()
+parser.add_argument('--path', default='data/Lena.png', help='Image path.')
+params = parser.parse_args()
+
+# 2. 이미지 로드 (한글 경로 대응 함수 사용)
+img = imread_korean(params.path, cv2.IMREAD_COLOR)
+
+# 이미지 로드 확인
+assert img is not None, f"이미지를 불러올 수 없습니다: {os.path.abspath(params.path)}"
+
+print(f'--- 원본 이미지 정보 ---')
+print(f'Path: {params.path}')
+print('Shape:', img.shape)
+print('Dtype:', img.dtype)
+print("-" * 30)
+
+# 3. 크기 조정 (Resizing)
+# 직접 지정 방식 (Width, Height)
+width, height = 128, 256
+resized_img1 = cv2.resize(img, (width, height))
+print(f'Resized (128x256) shape: {resized_img1.shape}')
+
+# 비율 지정 방식 (fx, fy) - 축소
+w_mult, h_mult = 0.25, 0.5
+resized_img2 = cv2.resize(img, (0, 0), fx=w_mult, fy=h_mult)
+print(f'Resized (x0.25, y0.5) shape: {resized_img2.shape}')
+
+# 비율 지정 방식 + 보간법(INTER_NEAREST) - 확대
+w_mult, h_mult = 2, 4
+resized_img3 = cv2.resize(img, (0, 0), fx=w_mult, fy=h_mult, interpolation=cv2.INTER_NEAREST)
+print(f'Resized (x2, y4, Nearest) shape: {resized_img3.shape}')
+print("-" * 30)
+
+# 4. 대칭 반전 (Flipping)
+img_flip_x = cv2.flip(img, 0)          # 상하 반전
+img_flip_x_y = cv2.flip(img_flip_x, 1) # 상하 반전 후 좌우 반전
+img_flipped_xy = cv2.flip(img, -1)     # 상하좌우 동시 반전
+
+# 검증: 상하+좌우 연속 반전과 동시 반전 결과가 같은지 확인
+assert (img_flipped_xy == img_flip_x_y).all(), "반전 결과가 일치하지 않습니다."
+print("Flipping 검증 완료: 연속 반전과 동시 반전 결과가 일치합니다.")
+
+# 5. 그레이스케일 읽기 예시 (기존 코드 유지)
+img_gray = imread_korean(params.path, cv2.IMREAD_GRAYSCALE)
+if img_gray is not None:
+    print(f'Grayscale shape: {img_gray.shape}')
+-----------------------------------------------
+import argparse
+import cv2
+import numpy as np
+import os
+
+# 한글 경로 및 다양한 환경에서 이미지를 읽기 위한 함수
+def imread_korean(path, flags=cv2.IMREAD_COLOR):
+    try:
+        with open(path, "rb") as f:
+            bytes_data = bytearray(f.read())
+            numpy_array = np.asarray(bytes_data, dtype=np.uint8)
+        return cv2.imdecode(numpy_array, flags)
+    except Exception as e:
+        print(f"Error reading file: {e}")
+        return None
+
+# 1. 인자 설정 (기존 인자 + 반복 횟수 추가)
+parser = argparse.ArgumentParser()
+parser.add_argument('--path', default='data/Lena.png', help='Image path.')
+parser.add_argument('--iter', type=int, default=50, help='Downsampling-upsampling iterations number.')
+params = parser.parse_args()
+
+# 2. 이미지 로드
+img = imread_korean(params.path, cv2.IMREAD_COLOR)
+assert img is not None, f"이미지를 불러올 수 없습니다: {os.path.abspath(params.path)}"
+
+orig_size = img.shape[:2] # (height, width)
+print(f"Original shape: {img.shape}")
+
+# --- 섹션 1: 기본적인 리사이징 및 플립 (이전 코드 기능) ---
+# (중략 가능하지만 결과 확인을 위해 유지)
+resized_simple = cv2.resize(img, (128, 256))
+img_flipped = cv2.flip(img, -1)
+
+# --- 섹션 2: 반복적인 다운샘플링-업샘플링 시뮬레이션 ---
+cv2.imshow("Original image", img)
+cv2.waitKey(2000) # 2초 대기
+
+resized = img.copy()
+
+print(f"Starting {params.iter} iterations of resizing...")
+for i in range(params.iter):
+    # 256x256으로 축소 후 다시 원본 크기로 확대
+    # 이 과정에서 보간법(Interpolation)에 의해 픽셀 정보가 뭉개집니다.
+    resized = cv2.resize(cv2.resize(resized, (256, 256)), (orig_size[1], orig_size[0]))
+   
+    cv2.imshow("Downsized & Restored (Processing...)", resized)
+    if cv2.waitKey(50) & 0xFF == 27: # ESC 누르면 중단
+        break
+
+cv2.destroyWindow("Downsized & Restored (Processing...)")
+
+# --- 섹션 3: 최종 결과 비교 ---
+# WINDOW_NORMAL을 사용하면 창 크기를 마우스로 조절할 수 있습니다.
+cv2.namedWindow("Original vs Result", cv2.WINDOW_NORMAL)
+combined_view = np.hstack((img, resized)) # 원본과 결과물을 가로로 붙여서 비교
+cv2.imshow("Original vs Result", combined_view)
+
+print("결과 창이 떴습니다. 종료하려면 아무 키나 누르세요.")
+cv2.waitKey(0)
+cv2.destroyAllWindows()
